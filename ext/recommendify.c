@@ -4,18 +4,18 @@
 #include <hiredis/hiredis.h>
 
 #include "version.h"
-#include "cc_item.h" 
-#include "jaccard.c" 
-#include "cosine.c" 
-#include "output.c" 
-#include "sort.c" 
-#include "iikey.c" 
+#include "cc_item.h"
+#include "jaccard.c"
+#include "cosine.c"
+#include "output.c"
+#include "sort.c"
+#include "iikey.c"
 
 
 int main(int argc, char **argv){
-  int i, j, n, similarityFunc = 0;    
-  int itemCount = 0;  
-  char *itemID;  
+  int i, j, n, similarityFunc = 0;
+  int itemCount = 0;
+  char *itemID;
   char *redisPrefix;
   redisContext *c;
   redisReply *all_items;
@@ -26,10 +26,11 @@ int main(int argc, char **argv){
 
   int batch_size = 200; /* FIXPAUL: make option */
   int maxItems = 50; /* FIXPAUL: make option */
-  
+
   struct {
     char  host[1024];
     int   port;
+    int   db;
   } redis_addr;
 
   /* option parsing */
@@ -39,10 +40,10 @@ int main(int argc, char **argv){
   if(!strcmp(argv[1], "--version"))
     return print_version();
 
-  if(!strcmp(argv[1], "--jaccard")) 
+  if(!strcmp(argv[1], "--jaccard"))
     similarityFunc = 1;
 
-  if(!strcmp(argv[1], "--cosine"))  
+  if(!strcmp(argv[1], "--cosine"))
     similarityFunc = 2;
 
   if(!similarityFunc){
@@ -69,6 +70,10 @@ int main(int argc, char **argv){
     } else {
       strncpy(redis_addr.host, argv[4], sizeof(redis_addr.host));
     }
+    if(argc > 5){
+      redis_addr.db =  atoi(argv[5]);
+    }
+
   }
 
   /* default redis location */
@@ -79,7 +84,7 @@ int main(int argc, char **argv){
     redis_addr.port = 6379;
 
   /* connect to redis */
-  struct timeval timeout = { 1, 500000 }; 
+  struct timeval timeout = { 1, 500000 };
   c = redisConnectWithTimeout(redis_addr.host, redis_addr.port, timeout);
 
   if(c->err){
@@ -87,9 +92,11 @@ int main(int argc, char **argv){
     return 1;
   }
 
+  redisCommand(c,"SELECT %s", redis_addr.db);
+
 
   /* get item count */
-  reply = redisCommand(c,"HGET %s:items %s", redisPrefix, itemID);    
+  reply = redisCommand(c,"HGET %s:items %s", redisPrefix, itemID);
 
   if(reply->str){
     itemCount = atoi(reply->str);
@@ -103,29 +110,29 @@ int main(int argc, char **argv){
     printf("exit: item count is zero or one\n");
     return 0;
   }
-  
 
-  /* get all items_ids and the total counts */ 
+
+  /* get all items_ids and the total counts */
   all_items = redisCommand(c,"HGETALL %s:items", redisPrefix);
 
   if(all_items->type != REDIS_REPLY_ARRAY)
     return 1;
 
 
-  /* populate the cc_items array */ 
-  int cc_items_size = all_items->elements / 2;  
+  /* populate the cc_items array */
+  int cc_items_size = all_items->elements / 2;
   int cc_items_mem = cc_items_size * sizeof(struct cc_item);
   struct cc_item *cc_items = malloc(cc_items_mem);
   cc_items_size--;
 
-  if(!cc_items){    
+  if(!cc_items){
     printf("cannot allocate memory: %i", cc_items_mem);
     return 1;
   }
-  
+
   i = 0;
-  for (j = 0; j < all_items->elements/2; j++){                   
-    if(strcmp(itemID, all_items->element[j*2]->str) != 0){      
+  for (j = 0; j < all_items->elements/2; j++){
+    if(strcmp(itemID, all_items->element[j*2]->str) != 0){
       strncpy(cc_items[i].item_id, all_items->element[j*2]->str, ITEM_ID_SIZE);
       cc_items[i].total_count = atoi(all_items->element[j*2+1]->str);
       i++;
@@ -138,7 +145,7 @@ int main(int argc, char **argv){
   // batched redis hmgets on the ccmatrix
   cur_batch = (char *)malloc(((batch_size * (ITEM_ID_SIZE + 4) * 2) + 100) * sizeof(char));
 
-  if(!cur_batch){    
+  if(!cur_batch){
     printf("cannot allocate memory");
     return 1;
   }
@@ -156,17 +163,17 @@ int main(int argc, char **argv){
 
       if(iikey)
         free(iikey);
-    }    
+    }
 
-    redisAppendCommand(c, cur_batch);  
+    redisAppendCommand(c, cur_batch);
     redisGetReply(c, (void**)&reply);
-      
+
     for(j = 0; j < reply->elements; j++){
       if(reply->element[j]->str){
         cc_items[n-j].coconcurrency_count = atoi(reply->element[j]->str);
       } else {
         cc_items[n-j].coconcurrency_count = 0;
-      }   
+      }
     }
 
     freeReplyObject(reply);
@@ -184,7 +191,7 @@ int main(int argc, char **argv){
   if(similarityFunc == 2)
     calculate_cosine(itemID, itemCount, cc_items, cc_items_size);
 
-  
+
   /* find the top x items with simple bubble sort */
   for(i = 0; i < maxItems - 1; ++i){
     for (j = 0; j < cc_items_size - i - 1; ++j){
@@ -202,13 +209,11 @@ int main(int argc, char **argv){
   for(j = 0; j < n; j++){
     i = cc_items_size-j-1;
     if(cc_items[i].similarity > 0){
-      print_item(cc_items[i]);      
-    }    
+      print_item(cc_items[i]);
+    }
   }
 
 
-  free(cc_items); 
+  free(cc_items);
   return 0;
 }
-
-
