@@ -34,7 +34,9 @@ private
   end
 
   def run_native(item_id)
+  #  puts "#{native_path} --jaccard #{redis_key} #{item_id} #{redis_url} #{redis_db}"
     res = %x{#{native_path} --jaccard "#{redis_key}" "#{item_id}" "#{redis_url}" "#{redis_db}"}
+  #  puts res
     raise "error: dirty exit (#{$?})" if $? != 0
     res.split("\n").map do |line|
       sim = line.match(/OUT: \(([^\)]*)\) \(([^\)]*)\)/)

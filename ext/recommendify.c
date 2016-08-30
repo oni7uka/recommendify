@@ -49,7 +49,7 @@ int main(int argc, char **argv){
   if(!similarityFunc){
     printf("invalid option: %s\n", argv[1]);
     return 1;
-  } else if(argc < 4 || argc > 5){
+  } else if(argc < 5 || argc > 6){
     printf("wrong number of arguments\n");
     print_usage(argv[0]);
     return 1;
@@ -59,7 +59,7 @@ int main(int argc, char **argv){
   itemID = argv[3];
   redis_addr.host[0] = 0;
   redis_addr.port = 0;
-
+  redis_addr.db = 0;
   /* configure redis location */
   if(argc > 4){
     char* has_port = strchr(argv[4], ':');
@@ -92,7 +92,7 @@ int main(int argc, char **argv){
     return 1;
   }
 
-  redisCommand(c,"SELECT %s", redis_addr.db);
+  redisCommand(c,"SELECT %d", redis_addr.db);
 
 
   /* get item count */
